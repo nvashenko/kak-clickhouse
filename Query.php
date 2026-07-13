@@ -304,5 +304,66 @@ class Query extends BaseQuery
         ]);
     }
 
+    /**
+     * Override default method to fix new self() in parent method which
+     * wraps kak\clickhouse\Query into yii\db\Query
+     *
+     * Queries a scalar value by setting [[select]] first.
+     * Restores the value of select to make this query reusable.
+     * @param string|ExpressionInterface $selectExpression
+     * @param Connection|null $db the database connection used to execute the query.
+     * @return bool|string|null
+     * @throws \Throwable if can't create command
+     */
+    protected function queryScalar($selectExpression, $db)
+    {
+        if ($this->emulateExecution) {
+            return null;
+        }
 
+        if (
+            !$this->distinct
+            && empty($this->groupBy)
+            && empty($this->having)
+            && empty($this->union)
+        ) {
+            $select = $this->select;
+            $order = $this->orderBy;
+            $limit = $this->limit;
+            $offset = $this->offset;
+
+            $this->select = [$selectExpression];
+            $this->orderBy = null;
+            $this->limit = null;
+            $this->offset = null;
+
+            $e = null;
+            try {
+                $command = $this->createCommand($db);
+            } catch (\Exception $e) {
+                // throw it later (for PHP < 7.0)
+            } catch (\Throwable $e) {
+                // throw it later
+            }
+
+            $this->select = $select;
+            $this->orderBy = $order;
+            $this->limit = $limit;
+            $this->offset = $offset;
+
+            if ($e !== null) {
+                throw $e;
+            }
+
+            return $command->queryScalar();
+        }
+
+        $command = (new self())
+            ->select([$selectExpression])
+            ->from(['c' => $this])
+            ->createCommand($db);
+        $this->setCommandCache($command);
+
+        return $command->queryScalar();
+    }
 }
